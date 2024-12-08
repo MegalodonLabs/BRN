@@ -3,7 +3,13 @@
 
 ## Overview
 
-This repository was build to interact with methods of the BRN stablecoin on the NEAR Protocol through API requests. This methods are defined in NEPs (NEAR Enhancement Proposals) like NEP-141 for token management, NEP-145 for storage interactions, and NEP-148 for metadata. Also, it includes custom methods based on reference stablecoin implementations for functions such as owner-controlled minting and burning, and potentially access control mechanisms.
+This repository provides a solution to interact with the **BRN stablecoin** on the **NEAR Protocol** through API requests. The methods implemented align with key NEPs (**NEAR Enhancement Proposals**), such as:  
+
+- **NEP-141:** Token management.  
+- **NEP-145:** Storage interactions.  
+- **NEP-148:** Metadata.  
+
+Additionally, custom methods are included for functionalities like owner-controlled minting, burning, and access control mechanisms inspired by stablecoin reference implementations.
 
 # Topics
 
