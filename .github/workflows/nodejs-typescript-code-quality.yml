@@ -1,0 +1,144 @@
+name: 'Node Typescript - CI'
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+    paths:
+      - "nodejs-typescript/**/*.js"
+      - "nodejs-typescript/**/*.ts"
+      - "nodejs-typescript/**/*.json"
+      - "nodejs-typescript/**/*.lock"
+      - "nodejs-typescript/Dockerfile"
+      - "nodejs-typescript/src/**"
+
+defaults:
+  run:
+    working-directory: nodejs-typescript/
+
+jobs:
+  code-quality:
+    timeout-minutes: 5
+    name: Code Quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      pull-requests: write
+    strategy:
+      matrix:
+        node: ["18"]
+    services:
+      mariadb:
+        image: mariadb:10.6
+        ports:
+          - 3306:3306
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: nodejs-typescript
+        options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: "./nodejs-typescript/package-lock.json"
+
+      - name: Install dependencies
+        run: make clean-setup-dev
+
+#     OPTIONAL: start needed services from Docker Compose instead of Github Actions services
+#     - name: Start needed services from Docker Compose
+#       run: |
+#         cd ../../
+#         make COMPOSE="docker compose" DETACH="-d" docker-start-db
+#         docker ps
+
+      - name: Run Review Dog - Linter
+        uses: reviewdog/action-eslint@v1
+        with:
+          level: "info"
+          workdir: "./nodejs-typescript"
+          fail_on_error: "true"
+
+      - name: Run linter
+        if: github.event_name != 'pull_request'
+        run: make lint
+
+      - name: Copy .env.example to .env.test
+        run: |
+          cp ./src/config/.env.example ./src/config/.env.test
+          sed -i 's/NODE_ENV=.*/NODE_ENV="test"/g' ./src/config/.env.test
+          sed -i 's/DATABASE_HOST=.*/DATABASE_HOST="localhost"/g' ./src/config/.env.test
+
+      - name: Run coverage test
+        run: make coverage-test
+
+      - name: Code Coverage Report
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: ./nodejs-typescript/src/coverage/cobertura-coverage.xml
+          fail_below_min: true
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: true
+          indicators: true
+          output: both
+          thresholds: '80 80'
+
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          recreate: true
+          path: code-coverage-results.md
+
+#      OPTIONAL: add Codecov
+#      - name: Upload Coverage reports
+#        uses: codecov/codecov-action@v3
+#        with:
+#          directory: './packages/mgw_node/'
+#          flags: mgw_node
+#          token: ${{ secrets.CODECOV_TOKEN }}
+#          fail_ci_if_error: true
+#          verbose: true
+
+  build:
+    timeout-minutes: 10
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: "./nodejs-typescript"
+          platforms: linux/amd64
+          target: remote
+          push: false
+          tags: build:1.0.0
+          outputs: type=docker,dest=/tmp/docker_image.tar
+
+#      OPTIONAL: upload Docker image do Github Artifact
+#      - name: Upload artifact
+#        uses: actions/upload-artifact@v3
+#        if: (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.run-type == 'Test-and-Deploy-to-Dev'))
+#        with:
+#          retention-days: 1
+#          name: docker_image
+#          path: /tmp/docker_image.tar
